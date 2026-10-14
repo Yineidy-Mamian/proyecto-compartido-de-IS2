@@ -3,77 +3,34 @@ package co.edu.unicauca.bancopreguntas.dataaccess;
 import co.edu.unicauca.bancopreguntas.domain.entities.EstadoPregunta;
 import co.edu.unicauca.bancopreguntas.domain.entities.Pregunta;
 import co.edu.unicauca.bancopreguntas.domain.repositories.PreguntaRepository;
+import com.unicauca.taller2.usuarios.access.ConexionSQLite;
 import java.sql.*;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
 public class PreguntaRepositorySQLite implements PreguntaRepository {
-    private final String url;
+    private static final DateTimeFormatter FORMATTER = DateTimeFormatter.ISO_LOCAL_DATE_TIME;
+    private final ConexionSQLite conexion;
 
-    // 1. Constructor para la aplicación real
-    public PreguntaRepositorySQLite() {
-        this.url = "jdbc:sqlite:saberpro.db";
-        inicializarBaseDeDatos();
+    public PreguntaRepositorySQLite(ConexionSQLite conexion) {
+        this.conexion = conexion;
     }
 
-    // 2. Constructor para las pruebas unitarias (recibe la ruta de la BD temporal)
-    public PreguntaRepositorySQLite(String url) {
-        this.url = url;
-        inicializarBaseDeDatos();
-    }
-
-    // 3. Crea la tabla si no existe
-    private void inicializarBaseDeDatos() {
-        String sql = "CREATE TABLE IF NOT EXISTS preguntas (" +
-                "id INTEGER PRIMARY KEY AUTOINCREMENT, " +
-                "autor_id INTEGER NOT NULL, " +
-                "contexto TEXT, " +
-                "pregunta_directa TEXT NOT NULL, " +
-                "distractor1 TEXT, distractor2 TEXT, distractor3 TEXT, distractor4 TEXT, " +
-                "respuesta_correcta TEXT, " +
-                "justificacion TEXT, " +
-                "bibliografia TEXT, " +
-                "competencia TEXT, " +
-                "tema TEXT, " +
-                "subtema TEXT, " +
-                "nivel_dificultad TEXT, " +
-                "estado TEXT DEFAULT 'BORRADOR'" +
-                ")";
-        try (Connection conn = DriverManager.getConnection(url);
-             Statement stmt = conn.createStatement()) {
-            stmt.execute(sql);
-        } catch (SQLException e) {
-            throw new RuntimeException("Error al inicializar la BD: " + e.getMessage(), e);
-        }
-    }
-
-    // 4. Guarda una nueva pregunta y recupera su ID auto-generado
+    //
     @Override
     public void guardar(Pregunta pregunta) {
-        String sql = "INSERT INTO preguntas (autor_id, contexto, pregunta_directa, distractor1, distractor2, distractor3, distractor4, respuesta_correcta, justificacion, bibliografia, competencia, tema, subtema, nivel_dificultad, estado) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
-        try (Connection conn = DriverManager.getConnection(url);
-             PreparedStatement ps = conn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
-            
-            ps.setInt(1, pregunta.getAutorId());
-            ps.setString(2, pregunta.getContexto());
-            ps.setString(3, pregunta.getPreguntaDirecta());
-            ps.setString(4, pregunta.getDistractor1());
-            ps.setString(5, pregunta.getDistractor2());
-            ps.setString(6, pregunta.getDistractor3());
-            ps.setString(7, pregunta.getDistractor4());
-            ps.setString(8, pregunta.getRespuestaCorrecta());
-            ps.setString(9, pregunta.getJustificacion());
-            ps.setString(10, pregunta.getBibliografia());
-            ps.setString(11, pregunta.getCompetencia());
-            ps.setString(12, pregunta.getTema());
-            ps.setString(13, pregunta.getSubtema());
-            ps.setString(14, pregunta.getNivelDificultad());
-            ps.setString(15, pregunta.getEstado().name());
-            
+        String sql = "INSERT INTO preguntas (contexto, pregunta_directa, distractor1, distractor2, distractor3, distractor4, respuesta_correcta, justificacion, bibliografia, competencia, tema, subtema, nivel_dificultad, estado, autor_id, fecha_creacion) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+        try (Connection conn = conexion.getConnection();
+                PreparedStatement ps = conn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
+            setPreparedStatementParameters(ps, pregunta);
+            ps.setString(14, pregunta.getEstado().name());
+            ps.setInt(15, pregunta.getAutorId());
+            ps.setString(16, pregunta.getFechaCreacion() != null ? pregunta.getFechaCreacion().format(FORMATTER)
+                    : LocalDateTime.now().format(FORMATTER));
             ps.executeUpdate();
-            
-            // Recuperamos el ID que SQLite le asignó automáticamente
             try (ResultSet rs = ps.getGeneratedKeys()) {
                 if (rs.next()) {
                     pregunta.setId(rs.getInt(1));
@@ -84,12 +41,40 @@ public class PreguntaRepositorySQLite implements PreguntaRepository {
         }
     }
 
-    // 5. Actualiza solo el estado (más rápido que actualizar toda la fila)
+    @Override
+    public void actualizar(Pregunta pregunta) {
+        String sql = "UPDATE preguntas SET contexto=?, pregunta_directa=?, distractor1=?, distractor2=?, distractor3=?, distractor4=?, respuesta_correcta=?, justificacion=?, bibliografia=?, competencia=?, tema=?, subtema=?, nivel_dificultad=?, estado=?, autor_id=? WHERE id=?";
+        try (Connection conn = conexion.getConnection(); PreparedStatement ps = conn.prepareStatement(sql)) {
+            setPreparedStatementParameters(ps, pregunta);
+            ps.setString(14, pregunta.getEstado().name());
+            ps.setInt(15, pregunta.getAutorId());
+            ps.setInt(16, pregunta.getId());
+            ps.executeUpdate();
+        } catch (SQLException e) {
+            throw new RuntimeException("Error al actualizar la pregunta: " + e.getMessage(), e);
+        }
+    }
+
+    private void setPreparedStatementParameters(PreparedStatement ps, Pregunta pregunta) throws SQLException {
+        ps.setString(1, pregunta.getContexto());
+        ps.setString(2, pregunta.getPreguntaDirecta());
+        ps.setString(3, pregunta.getDistractor1());
+        ps.setString(4, pregunta.getDistractor2());
+        ps.setString(5, pregunta.getDistractor3());
+        ps.setString(6, pregunta.getDistractor4());
+        ps.setString(7, pregunta.getRespuestaCorrecta());
+        ps.setString(8, pregunta.getJustificacion() != null ? pregunta.getJustificacion() : "");
+        ps.setString(9, pregunta.getBibliografia());
+        ps.setString(10, pregunta.getCompetencia());
+        ps.setString(11, pregunta.getTema());
+        ps.setString(12, pregunta.getSubtema());
+        ps.setString(13, pregunta.getNivelDificultad());
+    }
+
     @Override
     public void actualizarEstado(int preguntaId, EstadoPregunta nuevoEstado) {
         String sql = "UPDATE preguntas SET estado = ? WHERE id = ?";
-        try (Connection conn = DriverManager.getConnection(url);
-             PreparedStatement ps = conn.prepareStatement(sql)) {
+        try (Connection conn = conexion.getConnection(); PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setString(1, nuevoEstado.name());
             ps.setInt(2, preguntaId);
             ps.executeUpdate();
@@ -98,12 +83,10 @@ public class PreguntaRepositorySQLite implements PreguntaRepository {
         }
     }
 
-    // 6. Busca una pregunta por su ID
     @Override
     public Optional<Pregunta> buscarPorId(int id) {
-        String sql = "SELECT * FROM preguntas WHERE id = ?";
-        try (Connection conn = DriverManager.getConnection(url);
-             PreparedStatement ps = conn.prepareStatement(sql)) {
+        String sql = "SELECT p.*, u.nombre_completo AS autor_nombre FROM preguntas p JOIN usuarios u ON p.autor_id = u.id WHERE p.id = ?";
+        try (Connection conn = conexion.getConnection(); PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setInt(1, id);
             try (ResultSet rs = ps.executeQuery()) {
                 if (rs.next()) {
@@ -116,95 +99,46 @@ public class PreguntaRepositorySQLite implements PreguntaRepository {
         return Optional.empty();
     }
 
-    // 7. Lista preguntas con filtros opcionales y paginación (Lógica simplificada)
     @Override
-    public List<Pregunta> listarPorAutor(int autorId, List<EstadoPregunta> estadosFiltro, String nivelDificultad, int offset, int limit) {
-        List<Pregunta> lista = new ArrayList<>();
-        StringBuilder sql = new StringBuilder("SELECT * FROM preguntas WHERE autor_id = ?");
+    public List<Pregunta> listarPorAutor(int autorId, List<EstadoPregunta> estadosFiltro, String nivelDificultad,
+            int offset, int limit) {
+        StringBuilder sql = new StringBuilder(
+                "SELECT p.*, u.nombre_completo AS autor_nombre FROM preguntas p JOIN usuarios u ON p.autor_id = u.id WHERE 1=1");
         List<Object> params = new ArrayList<>();
-        params.add(autorId);
 
-        // Agregar filtro de estados si el usuario seleccionó alguno
-        if (estadosFiltro != null && !estadosFiltro.isEmpty()) {
-            sql.append(" AND estado IN (");
-            for (int i = 0; i < estadosFiltro.size(); i++) {
-                sql.append("?");
-                params.add(estadosFiltro.get(i).name());
-                // Agrega una coma si no es el último elemento
-                if (i < estadosFiltro.size() - 1) {
-                    sql.append(", ");
-                }
-            }
-            sql.append(")");
+        if (autorId != -1) {
+            sql.append(" AND p.autor_id = ?");
+            params.add(autorId);
         }
 
-        // Agregar filtro de dificultad si el usuario seleccionó uno
-        if (nivelDificultad != null && !nivelDificultad.trim().isEmpty()) {
-            sql.append(" AND nivel_dificultad = ?");
-            params.add(nivelDificultad);
-        }
+        appendFiltros(sql, params, estadosFiltro, nivelDificultad);
 
-        // Agregar paginación al final
-        sql.append(" ORDER BY id DESC LIMIT ? OFFSET ?");
+        sql.append(" ORDER BY p.fecha_creacion DESC LIMIT ? OFFSET ?");
         params.add(limit);
         params.add(offset);
 
-        // Ejecutar la consulta
-        try (Connection conn = DriverManager.getConnection(url);
-             PreparedStatement ps = conn.prepareStatement(sql.toString())) {
-            
-            // Llenar los '?' con los valores guardados en 'params'
-            for (int i = 0; i < params.size(); i++) {
-                ps.setObject(i + 1, params.get(i));
-            }
-            
-            try (ResultSet rs = ps.executeQuery()) {
-                while (rs.next()) {
-                    lista.add(mapearPregunta(rs));
-                }
-            }
-        } catch (SQLException e) {
-            throw new RuntimeException("Error al listar preguntas: " + e.getMessage(), e);
-        }
-        return lista;
+        return ejecutarQueryLista(sql.toString(), params);
     }
 
-    // 8. Cuenta cuántas preguntas coinciden con los filtros (para la paginación)
     @Override
     public int contarPorAutor(int autorId, List<EstadoPregunta> estadosFiltro, String nivelDificultad) {
-        StringBuilder sql = new StringBuilder("SELECT COUNT(*) FROM preguntas WHERE autor_id = ?");
+        StringBuilder sql = new StringBuilder("SELECT COUNT(*) FROM preguntas p WHERE 1=1");
         List<Object> params = new ArrayList<>();
-        params.add(autorId);
 
-        // Misma lógica de filtros que el método anterior, pero para COUNT
-        if (estadosFiltro != null && !estadosFiltro.isEmpty()) {
-            sql.append(" AND estado IN (");
-            for (int i = 0; i < estadosFiltro.size(); i++) {
-                sql.append("?");
-                params.add(estadosFiltro.get(i).name());
-                if (i < estadosFiltro.size() - 1) {
-                    sql.append(", ");
-                }
-            }
-            sql.append(")");
+        if (autorId != -1) {
+            sql.append(" AND p.autor_id = ?");
+            params.add(autorId);
         }
 
-        if (nivelDificultad != null && !nivelDificultad.trim().isEmpty()) {
-            sql.append(" AND nivel_dificultad = ?");
-            params.add(nivelDificultad);
-        }
+        appendFiltros(sql, params, estadosFiltro, nivelDificultad);
 
-        try (Connection conn = DriverManager.getConnection(url);
-             PreparedStatement ps = conn.prepareStatement(sql.toString())) {
-            
+        try (Connection conn = conexion.getConnection(); PreparedStatement ps = conn.prepareStatement(sql.toString())) {
             for (int i = 0; i < params.size(); i++) {
                 ps.setObject(i + 1, params.get(i));
             }
-            
             try (ResultSet rs = ps.executeQuery()) {
-                if (rs.next()) {
+                if (rs.next())
                     return rs.getInt(1);
-                }
             }
         } catch (SQLException e) {
             throw new RuntimeException("Error al contar preguntas: " + e.getMessage(), e);
@@ -212,11 +146,44 @@ public class PreguntaRepositorySQLite implements PreguntaRepository {
         return 0;
     }
 
-    // 9. Método auxiliar: Convierte una fila de la base de datos en un objeto Java
+   private void appendFiltros(StringBuilder sql, List<Object> params, List<EstadoPregunta> estadosFiltro, String nivelDificultad) {
+        if (estadosFiltro != null && !estadosFiltro.isEmpty()) {
+            sql.append(" AND p.estado IN (");
+            for (int i = 0; i < estadosFiltro.size(); i++) {
+                sql.append("?");
+                params.add(estadosFiltro.get(i).name());
+                if (i < estadosFiltro.size() - 1) {
+                    sql.append(","); // Agrega coma entre los estados, excepto al final
+                }
+            }
+            sql.append(")");
+        }
+        if (nivelDificultad != null && !nivelDificultad.isEmpty() && !nivelDificultad.equals("Todos")) {
+            sql.append(" AND p.nivel_dificultad = ?");
+            params.add(nivelDificultad);
+        }
+    }
+
+    private List<Pregunta> ejecutarQueryLista(String sql, List<Object> params) {
+        List<Pregunta> lista = new ArrayList<>();
+        try (Connection conn = conexion.getConnection(); PreparedStatement ps = conn.prepareStatement(sql)) {
+            for (int i = 0; i < params.size(); i++) {
+                ps.setObject(i + 1, params.get(i));
+            }
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    lista.add(mapearPregunta(rs));
+                }
+            }
+        } catch (SQLException e) {
+            throw new RuntimeException("Error ejecutando query: " + e.getMessage(), e);
+        }
+        return lista;
+    }
+
     private Pregunta mapearPregunta(ResultSet rs) throws SQLException {
-        Pregunta p = new Pregunta(); 
+        Pregunta p = new Pregunta();
         p.setId(rs.getInt("id"));
-        p.setAutorId(rs.getInt("autor_id"));
         p.setContexto(rs.getString("contexto"));
         p.setPreguntaDirecta(rs.getString("pregunta_directa"));
         p.setDistractor1(rs.getString("distractor1"));
@@ -231,6 +198,39 @@ public class PreguntaRepositorySQLite implements PreguntaRepository {
         p.setSubtema(rs.getString("subtema"));
         p.setNivelDificultad(rs.getString("nivel_dificultad"));
         p.setEstado(EstadoPregunta.valueOf(rs.getString("estado")));
+        p.setAutorId(rs.getInt("autor_id"));
+        p.setFechaCreacion(LocalDateTime.parse(rs.getString("fecha_creacion"), FORMATTER));
+
+        // El JOIN nos da el nombre del autor
+        try {
+            p.setAutorNombre(rs.getString("autor_nombre"));
+        } catch (SQLException e) {
+            // Ignorar si la columna no está (por ejemplo, en un count)
+        }
         return p;
     }
+
+    @Override
+    public List<Pregunta> listarPorEstado(EstadoPregunta estado, int offset, int limit) {
+        String sql = "SELECT p.*, u.nombre_completo AS autor_nombre FROM preguntas p "
+                   + "JOIN usuarios u ON p.autor_id = u.id "
+                   + "WHERE p.estado = ? ORDER BY p.fecha_creacion DESC LIMIT ? OFFSET ?";
+        return ejecutarQueryLista(sql, java.util.List.of(estado.name(), limit, offset));
+    }
+
+    @Override
+    public int contarPorEstado(EstadoPregunta estado) {
+        String sql = "SELECT COUNT(*) FROM preguntas WHERE estado = ?";
+        try (Connection conn = conexion.getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setString(1, estado.name());
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) return rs.getInt(1);
+            }
+        } catch (SQLException e) {
+            throw new RuntimeException("Error al contar preguntas por estado: " + e.getMessage(), e);
+        }
+        return 0;
+    }
 }
+

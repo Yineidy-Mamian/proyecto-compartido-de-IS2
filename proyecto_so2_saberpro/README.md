@@ -88,3 +88,8 @@ Para ejecutar las pruebas:
 
 ---
 *Proyecto desarrollado para la asignatura de Ingeniería de Software II (Corte 1).*
+
+## 📄 Documentación y Video de Sustentación
+
+* **📺 Video de Sustentación (YouTube):** [Ver video aquí](https://youtu.be/m5YG1WERcLg)
+* **📑 Documento PDF:** [Ver documento aquí](docs/Documentacion_Sprint1.pdf)
